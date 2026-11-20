@@ -1,0 +1,63 @@
+/* Sunset Bay — HUD and menu styling. Warm sunset palette, amber accents. */
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { width: 100%; height: 100%; overflow: hidden; background: #0b1026; }
+body { font-family: 'Segoe UI', system-ui, sans-serif; color: #fff; }
+#game { position: fixed; inset: 0; }
+#game canvas { display: block; }
+
+#hud { position: fixed; inset: 0; pointer-events: none; z-index: 5; }
+#top-left { position: absolute; top: 14px; left: 14px; text-shadow: 0 2px 6px rgba(0,0,0,.7); }
+.wanted { font-size: 26px; letter-spacing: 4px; color: #ffd23b; }
+.wanted.hot { color: #ff3b3b; animation: pulse 0.7s infinite alternate; }
+@keyframes pulse { from { opacity: 1; } to { opacity: .55; } }
+#cash { font-size: 26px; font-weight: 800; color: #7dff8a; margin-top: 2px; }
+#level { font-size: 13px; color: #ffd23b; font-weight: 700; margin-top: 1px; }
+#health-bar { position: relative; width: 180px; height: 16px; margin-top: 8px;
+  background: rgba(0,0,0,.55); border: 1px solid rgba(255,255,255,.35); border-radius: 8px; overflow: hidden; }
+#health-fill { height: 100%; width: 100%; background: #4a9a5a; transition: width .2s; }
+#health-num { position: absolute; inset: 0; text-align: center; font-size: 11px; line-height: 15px; font-weight: 700; }
+#district { margin-top: 6px; font-size: 15px; font-weight: 700; color: #ffe9b8; }
+
+#top-right { position: absolute; top: 14px; right: 14px; text-align: right; }
+#minimap { border: 2px solid rgba(255,255,255,.55); border-radius: 6px;
+  box-shadow: 0 2px 12px rgba(0,0,0,.6); background: #10151d; }
+#speed { font-size: 24px; font-weight: 800; margin-top: 6px; text-shadow: 0 2px 6px rgba(0,0,0,.8); }
+#objective { margin-top: 6px; max-width: 260px; margin-left: auto; font-size: 14px; font-weight: 600;
+  background: rgba(0,0,0,.55); border-left: 3px solid #ffd23b; padding: 6px 9px; border-radius: 4px; text-align: left; }
+#timer { color: #ff7a3b; font-weight: 800; }
+
+#msg-feed { position: absolute; left: 14px; bottom: 16px; font-size: 14px; font-weight: 600;
+  text-shadow: 0 1px 4px rgba(0,0,0,.9); }
+#msg-feed div { margin-top: 3px; }
+#crosshair { display: none; position: absolute; left: 50%; top: 50%; transform: translate(-50%,-50%);
+  font-size: 26px; font-weight: 300; color: rgba(255,255,255,.9); text-shadow: 0 0 6px #000; }
+#banner { position: absolute; left: 50%; top: 22%; transform: translateX(-50%) scale(.96);
+  text-align: center; opacity: 0; transition: opacity .25s, transform .25s; }
+#banner.show { opacity: 1; transform: translateX(-50%) scale(1); }
+#banner-title { font-size: 38px; font-weight: 900; letter-spacing: 2px; color: #ffd23b;
+  text-shadow: 0 3px 12px rgba(0,0,0,.85); }
+#banner-sub { font-size: 16px; margin-top: 4px; text-shadow: 0 2px 8px rgba(0,0,0,.9); }
+#vignette { position: absolute; inset: 0; opacity: 0; pointer-events: none;
+  background: radial-gradient(ellipse at center, transparent 55%, rgba(200,20,20,.55) 100%); }
+
+.overlay { position: fixed; inset: 0; z-index: 10; display: flex; align-items: center; justify-content: center;
+  background: linear-gradient(160deg, rgba(20,16,40,.82), rgba(120,50,10,.55)); }
+.overlay.hidden { display: none; }
+.panel { max-width: 560px; width: 92%; text-align: center; padding: 34px 30px;
+  background: rgba(10,10,22,.72); border: 1px solid rgba(255,210,59,.4); border-radius: 14px;
+  box-shadow: 0 12px 48px rgba(0,0,0,.6); }
+.panel h1 { font-size: 52px; font-weight: 900; letter-spacing: 6px; color: #ffd23b;
+  text-shadow: 0 0 24px rgba(255,150,40,.55); }
+.tagline { margin-top: 4px; font-size: 15px; color: #ffe9b8; font-style: italic; }
+#menu-story { margin: 16px 0; font-size: 15px; line-height: 1.55; color: #e8e8e8; }
+.controls { margin: 14px auto; font-size: 13.5px; line-height: 1.9; color: #cfd6e4;
+  background: rgba(255,255,255,.06); border-radius: 8px; padding: 10px; }
+.controls b { color: #ffd23b; }
+.panel button { pointer-events: auto; display: inline-block; margin: 8px 5px 0; padding: 12px 26px;
+  font-size: 16px; font-weight: 800; letter-spacing: 1px; color: #1a1206; background: #ffd23b;
+  border: none; border-radius: 8px; cursor: pointer; }
+.panel button:hover { background: #ffe14a; }
+#btn-continue { display: none; background: #e8e8e8; }
+.foot { margin-top: 14px; font-size: 11.5px; color: #9aa5b1; }
+#busted h1 { color: #3b7aff; }
+#wasted h1 { color: #ff3b3b; }

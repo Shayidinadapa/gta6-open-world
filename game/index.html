@@ -1,19 +1,90 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Block Dodger</title>
-<style>
-  html, body { margin: 0; height: 100%; overflow: hidden; background: #11141b; }
-  #game { position: fixed; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
-  /* Read aloud, never shown: the status line screen readers announce. */
-  #status { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
-</style>
+<title>Sunset Bay — Open-World Crime Game</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%23ffd23b'/%3E%3Ctext x='16' y='23' font-size='20' text-anchor='middle'%3E🌇%3C/text%3E%3C/svg%3E">
+<link rel="stylesheet" href="style.css">
 </head>
 <body>
-<canvas id="game" aria-label="Block Dodger: move the paddle left and right to dodge falling blocks and catch coins"></canvas>
-<p id="status" role="status" aria-live="polite"></p>
-<script type="module" src="./src/main.js"></script>
+<div id="game"></div>
+
+<div id="hud">
+  <div id="top-left">
+    <div id="wanted" class="wanted">☆☆☆☆☆</div>
+    <div id="cash">$250</div>
+    <div id="level">LV 1 · 0 XP</div>
+    <div id="health-bar"><div id="health-fill"></div><span id="health-num">100</span></div>
+    <div id="district">Marina</div>
+  </div>
+  <div id="top-right">
+    <canvas id="minimap" width="190" height="190"></canvas>
+    <div id="speed"></div>
+    <div id="objective"><span id="objective-text"></span> <span id="timer"></span></div>
+  </div>
+  <div id="msg-feed"></div>
+  <div id="crosshair">+</div>
+  <div id="banner"><div id="banner-title"></div><div id="banner-sub"></div></div>
+  <div id="vignette"></div>
+</div>
+
+<div id="menu" class="overlay">
+  <div class="panel">
+    <h1>SUNSET BAY</h1>
+    <p class="tagline">An open-world crime story. Your city. Your rules.</p>
+    <p id="menu-story">Kai "Rook" Mercer just got out — and Sunset Bay hasn't changed.
+      Mara Voss, the fixer who runs this town's nights, needs a driver she can
+      trust. Take her jobs, dodge the SBPD, and earn your way from the marina
+      to the top of Downtown.</p>
+    <div class="controls">
+      <div><b>WASD / Arrows</b> — move / drive</div>
+      <div><b>Mouse drag</b> — look around &nbsp;·&nbsp; <b>Click / F</b> — shoot</div>
+      <div><b>E</b> — steal / enter / exit car &nbsp;·&nbsp; <b>Space</b> — jump</div>
+      <div><b>Shift</b> — sprint &nbsp;·&nbsp; <b>Esc</b> — pause &nbsp;·&nbsp; <b>M</b> — mute</div>
+    </div>
+    <button id="btn-start">Start New Game</button>
+    <button id="btn-continue">Continue</button>
+    <p class="foot">A completely original game. No assets, names, or music from any other game.</p>
+  </div>
+</div>
+
+<div id="pause" class="overlay hidden">
+  <div class="panel">
+    <h1>Paused</h1>
+    <p class="tagline">Sunset Bay waits for no one. Except now.</p>
+    <button id="btn-resume">Resume</button>
+    <button id="btn-restart">Restart (erase save)</button>
+  </div>
+</div>
+
+<div id="busted" class="overlay hidden">
+  <div class="panel">
+    <h1>BUSTED</h1>
+    <p></p>
+    <button id="btn-busted">Pay up and walk free</button>
+  </div>
+</div>
+
+<div id="wasted" class="overlay hidden">
+  <div class="panel">
+    <h1>WASTED</h1>
+    <p></p>
+    <button id="btn-wasted">Wake up at the hospital</button>
+  </div>
+</div>
+
+<script src="vendor/three.min.js"></script>
+<script src="src/util.js"></script>
+<script src="src/audio.js"></script>
+<script src="src/city.js"></script>
+<script src="src/cars.js"></script>
+<script src="src/traffic.js"></script>
+<script src="src/police.js"></script>
+<script src="src/player.js"></script>
+<script src="src/combat.js"></script>
+<script src="src/missions.js"></script>
+<script src="src/hud.js"></script>
+<script src="src/main.js"></script>
 </body>
 </html>
