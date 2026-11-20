@@ -1,60 +1,82 @@
 // Sunset Bay — util.js
-// Small shared helpers: seeded random, math, canvas textures.
-// Everything in this file is original code written for this game.
-(function () {
+// Small shared helpers: seeded RNG, math, and tiny DOM/event utilities.
+// No game logic lives here; every other module builds on these.
+(function (global) {
   'use strict';
 
-  /** Mulberry32 seeded PRNG: deterministic per seed, so the city is the same every load. */
+  // Mulberry32 — small deterministic PRNG. Seed it per run so screenshots
+  // and playtests are reproducible; gameplay reseeds from Date.now().
   function mulberry32(seed) {
-    let a = seed >>> 0;
+    var a = seed >>> 0;
     return function () {
-      a |= 0; a = (a + 0x6d2b79f5) | 0;
-      let t = Math.imul(a ^ (a >>> 15), 1 | a);
+      a |= 0; a = (a + 0x6D2B79F5) | 0;
+      var t = Math.imul(a ^ (a >>> 15), 1 | a);
       t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
       return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
     };
   }
 
-  function clamp(v, lo, hi) { return v < lo ? lo : v > hi ? hi : v; }
+  function clamp(v, lo, hi) { return v < lo ? lo : (v > hi ? hi : v); }
   function lerp(a, b, t) { return a + (b - a) * t; }
-  function dist2(ax, az, bx, bz) {
-    const dx = bx - ax, dz = bz - az;
-    return Math.sqrt(dx * dx + dz * dz);
+  function damp(current, target, lambda, dt) {
+    return lerp(current, target, 1 - Math.exp(-lambda * dt));
   }
-  /** Shortest signed angle difference, for smooth turning. */
+  // Shortest signed angle difference, in radians.
   function angleDiff(a, b) {
-    let d = (b - a) % (Math.PI * 2);
+    var d = (b - a) % (Math.PI * 2);
     if (d > Math.PI) d -= Math.PI * 2;
     if (d < -Math.PI) d += Math.PI * 2;
     return d;
   }
   function angleLerp(a, b, t) { return a + angleDiff(a, b) * clamp(t, 0, 1); }
+  function dist2D(ax, az, bx, bz) {
+    var dx = ax - bx, dz = az - bz;
+    return Math.sqrt(dx * dx + dz * dz);
+  }
+  function pick(rng, arr) { return arr[Math.floor(rng() * arr.length)]; }
+  function randRange(rng, lo, hi) { return lo + rng() * (hi - lo); }
+  function randInt(rng, lo, hi) { return Math.floor(randRange(rng, lo, hi + 1)); }
 
-  /** Build a canvas texture from a 2D drawing callback. */
-  function canvasTexture(w, h, draw) {
-    const c = document.createElement('canvas');
-    c.width = w; c.height = h;
-    draw(c.getContext('2d'), w, h);
-    const tex = new THREE.CanvasTexture(c);
-    tex.colorSpace = THREE.SRGBColorSpace;
-    return tex;
+  function el(id) { return document.getElementById(id); }
+  function fmtMoney(n) {
+    n = Math.max(0, Math.floor(n));
+    return '$' + n.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+  }
+  function fmtTime(sec) {
+    sec = Math.max(0, Math.floor(sec));
+    var m = Math.floor(sec / 60), s = sec % 60;
+    return (m < 10 ? '0' : '') + m + ':' + (s < 10 ? '0' : '') + s;
   }
 
-  /** Round a number to a fixed precision for HUD display. */
-  function fmt(n, digits) {
-    const p = Math.pow(10, digits || 0);
-    return String(Math.round(n * p) / p);
+  // Tiny pub/sub so modules stay decoupled.
+  function Bus() {
+    var map = {};
+    return {
+      on: function (ev, fn) { (map[ev] = map[ev] || []).push(fn); },
+      emit: function (ev, data) {
+        var list = map[ev] || [];
+        for (var i = 0; i < list.length; i++) {
+          try { list[i](data); } catch (e) { /* never break the loop on a listener */ }
+        }
+      }
+    };
   }
 
-  window.SB = window.SB || {};
-  window.SB.util = {
+  global.SB = global.SB || {};
+  global.SB.util = {
     mulberry32: mulberry32,
     clamp: clamp,
     lerp: lerp,
-    dist2: dist2,
+    damp: damp,
     angleDiff: angleDiff,
     angleLerp: angleLerp,
-    canvasTexture: canvasTexture,
-    fmt: fmt
+    dist2D: dist2D,
+    pick: pick,
+    randRange: randRange,
+    randInt: randInt,
+    el: el,
+    fmtMoney: fmtMoney,
+    fmtTime: fmtTime,
+    Bus: Bus
   };
-})();
+})(window);

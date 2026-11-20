@@ -1,287 +1,268 @@
 // Sunset Bay — missions.js
-// Story missions, objective tracking, and repeatable side jobs (taxi fares).
-// Kai "Rook" Mercer works for Mara Voss, a fixer in Sunset Bay. Five story
-// jobs, then free roam with fares. All names and story are original.
-(function () {
+// Five story missions from fixer Mara Voss, plus repeatable fares.
+// Each mission is a small state machine with waypoints, a 3D beacon, and
+// a GPS route on the minimap. Rewards pay money and XP.
+(function (global) {
   'use strict';
-
-  var U = window.SB.util;
+  var SB = global.SB;
+  var U = SB.util;
+  var THREE = global.THREE;
 
   var STORY = [
     {
-      id: 'first-fare',
-      title: 'First Fare',
-      giver: 'Mara Voss',
-      briefing: 'Mara needs a driver she can trust. Get in a car and take her client across town to the marina hotel.',
+      id: 'm1', name: 'First Fare',
+      brief: 'Mara Voss needs a driver. Pick up her contact at the plaza and drop him at the pier.',
       steps: [
-        { type: 'enterCar', text: 'Get in a car (walk up to one and press E)' },
-        { type: 'driveTo', x: 104, z: 208, radius: 10, text: 'Drive the client to the Marina Hotel' }
+        { type: 'goto', label: 'Pick up the contact at Meridian Plaza', x: 0, z: 24, radius: 6 },
+        { type: 'goto', label: 'Drop him at Sunset Pier (south beach)', x: -120, z: 200, radius: 8 }
       ],
-      reward: 150
+      reward: 350, xp: 120
     },
     {
-      id: 'hot-wheels',
-      title: 'Hot Wheels',
-      giver: 'Mara Voss',
-      briefing: 'A Comet GT is parked outside the Uptown showroom. Take it — quietly — and bring it to the garage on Westside.',
+      id: 'm2', name: 'The Drop',
+      brief: 'A package waits at the docks. Grab it and deliver it to the neon district. Cops are watching — expect heat.',
       steps: [
-        { type: 'stealCar', x: 156, z: -156, radius: 8, text: 'Steal the Comet GT (press E near it)' },
-        { type: 'deliverCar', x: -156, z: 52, radius: 10, text: 'Deliver the Comet to the Westside garage' }
+        { type: 'goto', label: 'Collect the package at the docks', x: -168, z: -24, radius: 6 },
+        { type: 'goto', label: 'Deliver to the Coral Club, neon district', x: 120, z: -72, radius: 8, heat: 2 }
       ],
-      reward: 300
+      reward: 600, xp: 200
     },
     {
-      id: 'heat-wave',
-      title: 'Heat Wave',
-      giver: 'Mara Voss',
-      briefing: 'The SBPD is onto you. Two stars. Lay low, break line of sight, and let the heat die down.',
+      id: 'm3', name: 'Shakedown',
+      brief: 'Three thugs are shaking down Mara\'s warehouse. Go in on foot and clear them out.',
       steps: [
-        { type: 'evade', text: 'Lose the cops — stay out of sight until the wanted level clears' }
+        { type: 'goto', label: 'Reach the warehouse on the west side', x: -144, z: 72, radius: 8 },
+        { type: 'combat', label: 'Clear out the thugs (3)', x: -144, z: 72, radius: 16, count: 3 }
       ],
-      reward: 250
+      reward: 800, xp: 260
     },
     {
-      id: 'the-pickup',
-      title: 'The Pickup',
-      giver: 'Mara Voss',
-      briefing: 'A package is waiting in Old Town. The Harbormen want it too — expect trouble. Grab it and bring it to Mara.',
+      id: 'm4', name: 'Hot Wheels',
+      brief: 'A crimson sports car is parked by the park. Steal it and bring it to the chop shop — the law will notice.',
       steps: [
-        { type: 'goto', x: -156, z: -156, radius: 8, text: 'Reach the package in Old Town (on foot)' },
-        { type: 'combat', text: 'Deal with the Harbormen' },
-        { type: 'driveTo', x: 0, z: -52, radius: 10, text: 'Bring the package to Mara in Midtown' }
+        { type: 'steal', label: 'Steal the crimson sports car at the park', x: 144, z: -144, radius: 6 },
+        { type: 'goto', label: 'Deliver it to the chop shop', x: -72, z: 168, radius: 8, heat: 3, needCar: true }
       ],
-      reward: 500
+      reward: 1200, xp: 380
     },
     {
-      id: 'big-score',
-      title: 'The Big Score',
-      giver: 'Mara Voss',
-      briefing: 'One last job: the vault money is in the trunk. Three stars and the whole SBPD on your tail. Get to the hideout in East End — fast.',
+      id: 'm5', name: 'The Big One',
+      brief: 'The Meridian Bank job. Grab the take, then lose a five-star chase and reach the safehouse.',
       steps: [
-        { type: 'enterCar', text: 'Get in a car — any car' },
-        { type: 'driveTo', x: 208, z: 0, radius: 10, text: 'Reach the East End hideout before the timer runs out', time: 150 }
+        { type: 'goto', label: 'Hit the Meridian Bank downtown', x: 24, z: 24, radius: 8 },
+        { type: 'escape', label: 'Escape the chase and reach the safehouse', x: -168, z: 168, radius: 9, heat: 5 }
       ],
-      reward: 800
+      reward: 3000, xp: 800
     }
   ];
 
-  function Missions(rng) {
-    this.rng = rng;
-    this.index = 0;        // story mission index
-    this.step = 0;         // step inside the mission
-    this.state = 'idle';   // idle | active | done | freeroam
-    this.timer = 0;        // per-step countdown (0 = none)
-    this.fare = null;      // active side job
-    this.faresDone = 0;
-    this.xp = 0;           // experience: missions +100, fares +25
-    this.onEvent = null;   // (event, data) — banner, sound, wanted hooks
-  }
-
-  /** Level from XP: every 300 XP is a level. */
-  Missions.prototype.level = function () {
-    return 1 + Math.floor(this.xp / 300);
-  };
-
-  Missions.prototype.current = function () {
-    return this.index < STORY.length ? STORY[this.index] : null;
-  };
-
-  Missions.prototype.currentStep = function () {
-    var m = this.current();
-    return m ? m.steps[this.step] : null;
-  };
-
-  Missions.prototype.objective = function () {
-    if (this.state === 'freeroam' && this.fare) return this.fare.step;
-    var s = this.currentStep();
-    return s || null;
-  };
-
-  Missions.prototype.start = function () {
-    this.state = 'active';
-    this.step = 0;
-    this.timer = 0;
-    var m = this.current();
-    if (m) this.emit('briefing', m);
-  };
-
-  Missions.prototype.emit = function (event, data) {
-    if (this.onEvent) this.onEvent(event, data);
-  };
-
-  /** Advance one step; complete the mission when the steps run out. */
-  Missions.prototype.advance = function (ctx) {
-    var m = this.current();
-    if (!m) return;
-    this.step++;
-    this.timer = 0;
-    window.SB.audio.chime();
-    if (this.step >= m.steps.length) {
-      ctx.player.cash += m.reward;
-      this.xp += 100;
-      this.emit('missionComplete', m);
-      window.SB.audio.fanfare();
-      this.index++;
-      if (this.index >= STORY.length) {
-        this.state = 'freeroam';
-        this.emit('storyDone', null);
-      } else {
-        this.state = 'active';
-        this.step = 0;
-        this.emit('briefing', this.current());
-      }
-    } else {
-      var s = m.steps[this.step];
-      if (s.time) this.timer = s.time;
-      this.emit('step', s);
-    }
-  };
-
-  /**
-   * Per-frame objective check. ctx: {player, wanted, rivalsAlive, time}.
-   * Returns nothing; emits events and advances steps.
-   */
-  Missions.prototype.update = function (dt, ctx) {
-    var step = this.objective();
-    if (!step) return;
-    if (step.time && this.timer > 0) {
-      this.timer -= dt;
-      if (this.timer <= 0) {
-        this.emit('failed', { reason: 'Out of time — the job fell through.' });
-        this.timer = 0;
-        // Retry the step instead of failing the whole mission.
-        if (step.time) this.timer = step.time;
-        return;
-      }
-    }
-    var p = ctx.player;
-    switch (step.type) {
-      case 'enterCar':
-        if (p.inCar) this.advance(ctx);
-        break;
-      case 'driveTo':
-      case 'goto':
-        if (U.dist2(p.x, p.z, step.x, step.z) < step.radius) this.advance(ctx);
-        break;
-      case 'stealCar':
-        if (p.inCar && p.inCar.stolen) this.advance(ctx);
-        break;
-      case 'deliverCar':
-        if (p.inCar && p.inCar.stolen && U.dist2(p.x, p.z, step.x, step.z) < step.radius) {
-          p.inCar.stolen = false;
-          this.advance(ctx);
-        }
-        break;
-      case 'evade':
-        if (ctx.wanted <= 0) this.advance(ctx);
-        break;
-      case 'combat':
-        if (ctx.rivalsAlive <= 0) this.advance(ctx);
-        break;
-      default:
-        break;
-    }
-    // Side fare: pick up the fare, then deliver them.
-    if (this.state === 'freeroam' && this.fare) {
-      var f = this.fare;
-      if (!f.pickedUp && U.dist2(p.x, p.z, f.px, f.pz) < 6) {
-        f.pickedUp = true;
-        this.emit('farePickup', f);
-        window.SB.audio.chime();
-      } else if (f.pickedUp && U.dist2(p.x, p.z, f.dx, f.dz) < 8) {
-        p.cash += f.pay;
-        this.xp += 25;
-        this.faresDone++;
-        this.emit('fareDone', f);
-        window.SB.audio.fanfare();
-        this.fare = null;
-      }
-    }
-  };
-
-  /** Offer a new taxi fare somewhere in the city. */
-  Missions.prototype.newFare = function (city) {
-    var a = city.roadPoint(this.rng);
-    var b = city.roadPoint(this.rng);
-    this.fare = {
-      px: a.x, pz: a.z, dx: b.x, dz: b.z,
-      pay: 40 + Math.floor(this.rng() * 60),
-      pickedUp: false,
-      step: { type: 'fare', x: a.x, z: a.z, radius: 6, text: 'Pick up the fare' }
-    };
-    this.emit('fareNew', this.fare);
-    return this.fare;
-  };
-
-  // ---------------------------------------------------------------- peds
-
-  /** Pedestrians strolling the sidewalks; they flee gunfire. */
-  function Pedestrians(scene, city, rng, count) {
+  function Missions(scene, city, rng, bus) {
     this.scene = scene;
     this.city = city;
     this.rng = rng;
-    this.list = [];
-    var shirts = [0xd8d8d8, 0x3b7ac2, 0xc23b3b, 0x4a9a5a, 0xe8c23b, 0x8a5ac2, 0xdddddd];
-    for (var i = 0; i < count; i++) {
-      var mesh = new THREE.Group();
-      var shirt = new THREE.MeshLambertMaterial({ color: shirts[i % shirts.length] });
-      var pants = new THREE.MeshLambertMaterial({ color: 0x2e3138 });
-      var skin = new THREE.MeshLambertMaterial({ color: [0xc98e6a, 0x8a5a3b, 0xe8b88a][i % 3] });
-      var torso = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.6, 0.3), shirt);
-      torso.position.y = 1.05;
-      mesh.add(torso);
-      var head = new THREE.Mesh(new THREE.SphereGeometry(0.21, 10, 8), skin);
-      head.position.y = 1.55;
-      mesh.add(head);
-      var leg = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.7, 0.2), pants);
-      leg.position.set(-0.13, 0.35, 0);
-      mesh.add(leg);
-      var leg2 = leg.clone();
-      leg2.position.x = 0.13;
-      mesh.add(leg2);
-      var p = city.roadPoint(rng);
-      // Stand on a sidewalk next to the road.
-      var px = p.x + (rng() < 0.5 ? 9 : -9);
-      var pz = p.z;
-      mesh.position.set(px, 0, pz);
-      scene.add(mesh);
-      this.list.push({
-        mesh: mesh, x: px, z: pz, heading: rng() * Math.PI * 2,
-        speed: 1 + rng() * 1.2, hp: 100, alive: true,
-        fleeing: 0, phase: rng() * 6
-      });
-    }
+    this.bus = bus;
+    this.storyIndex = 0;
+    this.active = null; // {def, step, target}
+    this.fare = null;
+    this.beacon = null;
+    this.thugs = [];
+    this.stolenCar = null;
+    this.escapeTimer = 0;
   }
 
-  Pedestrians.prototype.update = function (dt, danger) {
-    for (var i = 0; i < this.list.length; i++) {
-      var p = this.list[i];
-      if (!p.alive) continue;
-      if (danger) p.fleeing = 3;
-      if (p.fleeing > 0) {
-        p.fleeing -= dt;
-        p.speed = 5.5;
-      } else {
-        p.speed = 1.4;
-      }
-      p.x += Math.sin(p.heading) * p.speed * dt;
-      p.z += Math.cos(p.heading) * p.speed * dt;
-      // Turn at intersections or city edge.
-      var onRoad = false;
-      for (var k = 0; k < this.city.centers.length; k++) {
-        if (Math.abs(p.x - this.city.centers[k]) < 3 || Math.abs(p.z - this.city.centers[k]) < 3) { onRoad = true; break; }
-      }
-      if (onRoad && this.rng() < dt * 0.4) p.heading += (this.rng() - 0.5) * 2.2;
-      if (Math.abs(p.x) > this.city.cityHalf + 20 || Math.abs(p.z) > this.city.cityHalf + 20) {
-        p.heading += Math.PI;
-      }
-      p.mesh.position.set(p.x, 0, p.z);
-      p.mesh.rotation.y = p.heading;
-      p.phase += dt * p.speed * 2;
-      p.mesh.children[2].rotation.x = Math.sin(p.phase) * 0.5;
-      p.mesh.children[3].rotation.x = -Math.sin(p.phase) * 0.5;
+  Missions.prototype.currentDef = function () {
+    return STORY[this.storyIndex] || null;
+  };
+
+  Missions.prototype.startStory = function () {
+    var def = this.currentDef();
+    if (!def) return false;
+    this.active = { def: def, step: 0, kind: 'story' };
+    this._showBeacon();
+    this._applyStepHeat(this.currentStep());
+    var first = this.currentStep();
+    if (first && first.type === 'steal') this.spawnStolenCar(first.x, first.z);
+    this.bus.emit('mission-start', { def: def });
+    return true;
+  };
+
+  Missions.prototype.startFare = function (playerPos) {
+    if (this.active) return false;
+    var a = this.city.randomRoadPoint(this.rng);
+    var b = this.city.randomRoadPoint(this.rng);
+    while (U.dist2D(a.x, a.z, b.x, b.z) < 90) b = this.city.randomRoadPoint(this.rng);
+    var fare = {
+      def: {
+        id: 'fare', name: 'Fare',
+        brief: 'A rider needs a lift across town.',
+        steps: [
+          { type: 'goto', label: 'Pick up the rider', x: a.x, z: a.z, radius: 6 },
+          { type: 'goto', label: 'Drop the rider off', x: b.x, z: b.z, radius: 8 }
+        ],
+        reward: U.randInt(this.rng, 120, 260), xp: 60
+      },
+      step: 0, kind: 'fare'
+    };
+    this.active = fare;
+    this._showBeacon();
+    this._applyStepHeat(this.currentStep());
+    this.bus.emit('mission-start', { def: fare.def });
+    return true;
+  };
+
+  Missions.prototype._showBeacon = function () {
+    this._hideBeacon();
+    var step = this.currentStep();
+    if (!step) return;
+    var geo = new THREE.CylinderGeometry(1.6, 1.6, 30, 12, 1, true);
+    var mat = new THREE.MeshBasicMaterial({
+      color: 0xffd23f, transparent: true, opacity: 0.35, side: THREE.DoubleSide, depthWrite: false
+    });
+    this.beacon = new THREE.Mesh(geo, mat);
+    this.beacon.position.set(step.x, 15, step.z);
+    this.scene.add(this.beacon);
+    var ring = new THREE.Mesh(
+      new THREE.RingGeometry(3, 5, 24),
+      new THREE.MeshBasicMaterial({ color: 0xffd23f, transparent: true, opacity: 0.8, side: THREE.DoubleSide })
+    );
+    ring.rotation.x = -Math.PI / 2;
+    ring.position.set(step.x, 0.1, step.z);
+    this.scene.add(ring);
+    this.beacon.userData.ring = ring;
+  };
+
+  Missions.prototype._hideBeacon = function () {
+    if (!this.beacon) return;
+    this.scene.remove(this.beacon);
+    if (this.beacon.userData.ring) this.scene.remove(this.beacon.userData.ring);
+    this.beacon = null;
+  };
+
+  Missions.prototype.currentStep = function () {
+    if (!this.active) return null;
+    return this.active.def.steps[this.active.step] || null;
+  };
+
+  Missions.prototype.objectiveText = function () {
+    var step = this.currentStep();
+    if (!step) return this.currentDef() ? 'Talk to Mara Voss — press N for the next job' : 'All story missions complete — fares pay the bills (N)';
+    if (step.type === 'combat') {
+      var left = step.count - (step.done || 0);
+      return step.label + ' — ' + Math.max(0, left) + ' left';
+    }
+    return step.label;
+  };
+
+  Missions.prototype.targetPos = function () {
+    var step = this.currentStep();
+    return step ? { x: step.x, z: step.z } : null;
+  };
+
+  Missions.prototype.spawnThugs = function (x, z) {
+    this.clearThugs();
+    var skinMat = new THREE.MeshLambertMaterial({ color: 0xc98d64 });
+    var thugMat = new THREE.MeshLambertMaterial({ color: 0x3a3a3a });
+    for (var i = 0; i < 3; i++) {
+      var g = new THREE.Group();
+      var body = new THREE.Mesh(new THREE.BoxGeometry(0.62, 0.95, 0.36), thugMat);
+      body.position.y = 1.0;
+      g.add(body);
+      var head = new THREE.Mesh(new THREE.SphereGeometry(0.26, 10, 8), skinMat);
+      head.position.y = 1.72;
+      g.add(head);
+      var tx = x + U.randRange(this.rng, -8, 8);
+      var tz = z + U.randRange(this.rng, -8, 8);
+      g.position.set(tx, 0, tz);
+      this.scene.add(g);
+      this.thugs.push({ mesh: g, x: tx, z: tz, hp: 3, alive: true });
     }
   };
 
-  window.SB.missions = { Missions: Missions, STORY: STORY, Pedestrians: Pedestrians };
-})();
+  Missions.prototype.clearThugs = function () {
+    for (var i = 0; i < this.thugs.length; i++) this.scene.remove(this.thugs[i].mesh);
+    this.thugs = [];
+  };
+
+  Missions.prototype.spawnStolenCar = function (x, z) {
+    if (this.stolenCar) return this.stolenCar;
+    var mesh = SB.cars.makeCarMesh(U.pick(this.rng, SB.cars.SPORTS), { sport: true });
+    this.scene.add(mesh);
+    var car = new SB.cars.Car(mesh, { x: x, z: z, heading: 0, maxSpeed: 34, accel: 18 });
+    this.stolenCar = car;
+    return car;
+  };
+
+  // Heat is applied when a step becomes active (the chase starts while
+  // you do the job, not after you finish it).
+  Missions.prototype._applyStepHeat = function (step) {
+    if (step && step.heat) this.bus.emit('crime', { amount: step.heat });
+  };
+
+  Missions.prototype._completeStep = function () {
+    var step = this.currentStep();
+    if (!step) return;
+    this.active.step++;
+    SB.audio.pickup();
+    if (this.active.step >= this.active.def.steps.length) {
+      this._completeMission();
+    } else {
+      this._showBeacon();
+      var next = this.currentStep();
+      this._applyStepHeat(next);
+      if (next && next.type === 'combat') this.spawnThugs(next.x, next.z);
+      if (next && next.type === 'steal') this.spawnStolenCar(next.x, next.z);
+      this.bus.emit('mission-step', { def: this.active.def, step: this.active.step });
+    }
+  };
+
+  Missions.prototype._completeMission = function () {
+    var def = this.active.def;
+    var kind = this.active.kind;
+    this._hideBeacon();
+    this.clearThugs();
+    this.active = null;
+    SB.audio.jingle(true);
+    this.bus.emit('mission-complete', { def: def, reward: def.reward, xp: def.xp, kind: kind });
+    if (kind === 'story') this.storyIndex++;
+  };
+
+  Missions.prototype.update = function (dt, player, playerCar) {
+    if (this.beacon) this.beacon.rotation.y += dt * 1.5;
+    var step = this.currentStep();
+    if (!step) return;
+    var px = playerCar ? playerCar.x : player.x;
+    var pz = playerCar ? playerCar.z : player.z;
+    var d = U.dist2D(px, pz, step.x, step.z);
+    if (step.type === 'goto') {
+      if (step.needCar && !playerCar) return;
+      if (d < step.radius) this._completeStep();
+    } else if (step.type === 'steal') {
+      if (playerCar === this.stolenCar && d < step.radius) this._completeStep();
+    } else if (step.type === 'combat') {
+      // Completion is driven by combat.js via reportKill().
+      if ((step.done || 0) >= step.count) this._completeStep();
+    } else if (step.type === 'escape') {
+      if (d < step.radius) {
+        // Must arrive with heat mostly gone to count as escaped.
+        if (SB.game && SB.game.police.wanted <= 1) this._completeStep();
+      }
+    }
+  };
+
+  Missions.prototype.reportKill = function () {
+    var step = this.currentStep();
+    if (!step || step.type !== 'combat') return;
+    step.done = (step.done || 0) + 1;
+    SB.audio.pickup();
+  };
+
+  Missions.prototype.reset = function () {
+    this._hideBeacon();
+    this.clearThugs();
+    if (this.stolenCar) { this.scene.remove(this.stolenCar.mesh); this.stolenCar = null; }
+    this.active = null;
+    this.storyIndex = 0;
+  };
+
+  SB.missions = { Missions: Missions, STORY: STORY };
+})(window);

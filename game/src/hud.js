@@ -1,190 +1,165 @@
 // Sunset Bay — hud.js
-// DOM HUD: wanted stars, cash, health, speed, district, objective text,
-// message feed, banners, menus, and the live 2D minimap canvas.
-(function () {
+// DOM HUD: wanted stars, health, money, level/XP, speedometer, mission
+// objective, a live minimap with a GPS route, toasts, and the menus
+// (start / pause / busted / wasted). Pure presentation, no game logic.
+(function (global) {
   'use strict';
-
-  var U = window.SB.util;
-
-  function el(id) { return document.getElementById(id); }
-
-  /** Draw the top-down minimap: roads, blocks, marina, player, cars, police, target. */
-  function drawMinimap(canvas, city, state) {
-    var g = canvas.getContext('2d');
-    var W = canvas.width, H = canvas.height;
-    var range = city.cityHalf + 60;
-    var scale = W / (range * 2);
-    function X(x) { return (x + range) * scale; }
-    function Z(z) { return (z + range) * scale; }
-    g.clearRect(0, 0, W, H);
-    g.fillStyle = '#10151d';
-    g.fillRect(0, 0, W, H);
-    // Marina water at the south edge.
-    g.fillStyle = '#1d5a78';
-    g.fillRect(0, Z(city.cityHalf + 10), W, H - Z(city.cityHalf + 10));
-    // Blocks.
-    g.fillStyle = '#2a2f38';
-    for (var ix = 0; ix < city.centers.length - 1; ix++) {
-      for (var iz = 0; iz < city.centers.length - 1; iz++) {
-        var x0 = city.centers[ix] + city.roadWidth / 2;
-        var z0 = city.centers[iz] + city.roadWidth / 2;
-        g.fillRect(X(x0), Z(z0), (city.pitch - city.roadWidth) * scale, (city.pitch - city.roadWidth) * scale);
-      }
-    }
-    // Roads.
-    g.strokeStyle = '#565d68';
-    g.lineWidth = Math.max(2, city.roadWidth * scale);
-    city.centers.forEach(function (c) {
-      g.beginPath(); g.moveTo(X(c), 0); g.lineTo(X(c), H); g.stroke();
-      g.beginPath(); g.moveTo(0, Z(c)); g.lineTo(W, Z(c)); g.stroke();
-    });
-    // Mission target blip (pulsing yellow).
-    var obj = state.objective;
-    if (obj && obj.x !== undefined) {
-      // GPS route: dashed line from the player to the target, routed
-      // along the road grid (Manhattan path), like a sat-nav.
-      g.strokeStyle = '#ffd23b';
-      g.lineWidth = 2;
-      g.setLineDash([5, 4]);
-      g.beginPath();
-      g.moveTo(X(state.player.x), Z(state.player.z));
-      g.lineTo(X(obj.x), Z(state.player.z));
-      g.lineTo(X(obj.x), Z(obj.z));
-      g.stroke();
-      g.setLineDash([]);
-      var pulse = 5 + Math.sin(performance.now() / 200) * 2;
-      g.fillStyle = '#ffd23b';
-      g.beginPath(); g.arc(X(obj.x), Z(obj.z), pulse, 0, Math.PI * 2); g.fill();
-      g.strokeStyle = '#fff2b0';
-      g.lineWidth = 2;
-      g.beginPath(); g.arc(X(obj.x), Z(obj.z), pulse + 4, 0, Math.PI * 2); g.stroke();
-    }
-    // Traffic dots.
-    g.fillStyle = '#e8c23b';
-    (state.traffic || []).forEach(function (c) {
-      g.fillRect(X(c.x) - 1.5, Z(c.z) - 1.5, 3, 3);
-    });
-    // Police dots (flashing blue/red).
-    var flash = Math.floor(performance.now() / 250) % 2 === 0;
-    g.fillStyle = flash ? '#3b7aff' : '#ff3b3b';
-    (state.police || []).forEach(function (c) {
-      g.beginPath(); g.arc(X(c.x), Z(c.z), 3, 0, Math.PI * 2); g.fill();
-    });
-    // Player arrow (white, rotated by heading).
-    var px = X(state.player.x), pz = Z(state.player.z);
-    g.save();
-    g.translate(px, pz);
-    g.rotate(Math.PI - state.player.heading);
-    g.fillStyle = '#ffffff';
-    g.beginPath();
-    g.moveTo(0, -7); g.lineTo(5, 6); g.lineTo(-5, 6); g.closePath();
-    g.fill();
-    g.restore();
-    // North marker.
-    g.fillStyle = '#9aa5b1';
-    g.font = 'bold 11px sans-serif';
-    g.fillText('N', 6, 13);
-  }
+  var SB = global.SB;
+  var U = SB.util;
 
   function HUD() {
-    this.minimap = el('minimap');
-    this.bannerTimer = 0;
-    this.feedTimer = 0;
+    this.map = U.el('minimap');
+    this.mapCtx = this.map ? this.map.getContext('2d') : null;
+    this.toastTimer = null;
+    this.lastStars = -1;
   }
 
-  HUD.prototype.setStars = function (n) {
-    var s = '';
-    for (var i = 0; i < 5; i++) s += i < n ? '★' : '☆';
-    el('wanted').textContent = s;
-    el('wanted').className = n >= 3 ? 'wanted hot' : 'wanted';
+  HUD.prototype._setText = function (id, text) {
+    var e = U.el(id);
+    if (e && e.textContent !== text) e.textContent = text;
   };
 
-  HUD.prototype.setCash = function (cash) {
-    el('cash').textContent = '$' + Math.floor(cash).toLocaleString('en-US');
-  };
-
-  HUD.prototype.setLevel = function (level, xp) {
-    el('level').textContent = 'LV ' + level + ' · ' + xp + ' XP';
-  };
-
-  HUD.prototype.setHealth = function (hp) {
-    el('health-fill').style.width = hp + '%';
-    el('health-fill').style.background = hp > 50 ? '#4a9a5a' : hp > 25 ? '#e8c23b' : '#c23b3b';
-    el('health-num').textContent = Math.ceil(hp);
-  };
-
-  HUD.prototype.setSpeed = function (kmh, inCar) {
-    el('speed').textContent = inCar ? Math.round(kmh) + ' km/h' : '';
-    el('speed').style.display = inCar ? 'block' : 'none';
-  };
-
-  HUD.prototype.setDistrict = function (name) {
-    el('district').textContent = name;
-  };
-
-  HUD.prototype.setObjective = function (text, timer) {
-    el('objective-text').textContent = text || '';
-    el('timer').textContent = timer > 0 ? Math.ceil(timer) + 's' : '';
-  };
-
-  HUD.prototype.feed = function (msg) {
-    var f = el('msg-feed');
-    var div = document.createElement('div');
-    div.textContent = msg;
-    f.appendChild(div);
-    while (f.children.length > 3) f.removeChild(f.firstChild);
-    this.feedTimer = 5;
-  };
-
-  HUD.prototype.banner = function (title, sub, ms) {
-    el('banner-title').textContent = title;
-    el('banner-sub').textContent = sub || '';
-    el('banner').classList.add('show');
-    this.bannerTimer = (ms || 2600) / 1000;
-  };
-
-  HUD.prototype.tick = function (dt) {
-    if (this.bannerTimer > 0) {
-      this.bannerTimer -= dt;
-      if (this.bannerTimer <= 0) el('banner').classList.remove('show');
+  HUD.prototype.update = function (s) {
+    // Wanted stars.
+    if (s.wanted !== this.lastStars) {
+      this.lastStars = s.wanted;
+      var stars = '';
+      for (var i = 0; i < 5; i++) stars += i < s.wanted ? '★' : '☆';
+      this._setText('stars', stars);
+      var sw = U.el('stars');
+      if (sw) sw.className = 'stars' + (s.wanted >= 4 ? ' hot' : s.wanted > 0 ? ' warm' : '');
     }
-    if (this.feedTimer > 0) {
-      this.feedTimer -= dt;
-      if (this.feedTimer <= 0) el('msg-feed').innerHTML = '';
+    this._setText('money', U.fmtMoney(s.money));
+    this._setText('level', 'LV ' + s.level);
+    this._setText('objective', s.objective || '');
+    var hp = U.el('health-fill');
+    if (hp) hp.style.width = U.clamp(s.health, 0, 100) + '%';
+    var xp = U.el('xp-fill');
+    if (xp) xp.style.width = U.clamp(s.xpInLevel / 100, 0, 1) * 100 + '%';
+    var sp = U.el('speed');
+    if (sp) sp.textContent = s.inCar ? Math.round(Math.abs(s.speed) * 3.6) + ' km/h' : '';
+    var vig = U.el('vignette');
+    if (vig) vig.style.opacity = s.health < 35 ? String((35 - s.health) / 55) : '0';
+    if (s.inCar) {
+      var dmg = U.el('cardamage');
+      if (dmg) {
+        dmg.style.width = U.clamp(s.carDamage || 0, 0, 100) + '%';
+        dmg.parentElement.style.display = 'block';
+      }
+    } else {
+      var cd = U.el('cardamage');
+      if (cd) cd.parentElement.style.display = 'none';
     }
+    this.drawMinimap(s);
   };
 
-  HUD.prototype.setCrosshair = function (show) {
-    el('crosshair').style.display = show ? 'block' : 'none';
+  HUD.prototype.drawMinimap = function (s) {
+    var ctx = this.mapCtx;
+    if (!ctx) return;
+    var W = this.map.width, H = this.map.height;
+    var scale = W / 420; // world units -> px, centred on the player
+    var toX = function (x) { return W / 2 + (x - s.px) * scale; };
+    var toZ = function (z) { return H / 2 + (z - s.pz) * scale; };
+    ctx.clearRect(0, 0, W, H);
+    ctx.fillStyle = '#10151c';
+    ctx.fillRect(0, 0, W, H);
+    // Roads.
+    ctx.strokeStyle = '#4a5058';
+    ctx.lineWidth = 5;
+    var roads = SB.city.ROAD_COORDS;
+    for (var i = 0; i < roads.length; i++) {
+      ctx.beginPath(); ctx.moveTo(toX(roads[i]), toZ(-210)); ctx.lineTo(toX(roads[i]), toZ(210)); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(toX(-210), toZ(roads[i])); ctx.lineTo(toX(210), toZ(roads[i])); ctx.stroke();
+    }
+    // Beach + water.
+    ctx.fillStyle = '#c9b078';
+    ctx.fillRect(0, toZ(196), W, H - toZ(196));
+    ctx.fillStyle = '#1d6f8f';
+    ctx.fillRect(0, toZ(285), W, H - toZ(285));
+    // GPS route to the mission target (Manhattan along the road grid).
+    if (s.target) {
+      var zRoad = this._nearestRoad(s.pz);
+      var xRoad = this._nearestRoad(s.target.x);
+      ctx.strokeStyle = '#ffd23f';
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.moveTo(toX(s.px), toZ(s.pz));
+      ctx.lineTo(toX(s.px), toZ(zRoad));
+      ctx.lineTo(toX(xRoad), toZ(zRoad));
+      ctx.lineTo(toX(xRoad), toZ(s.target.z));
+      ctx.lineTo(toX(s.target.x), toZ(s.target.z));
+      ctx.stroke();
+      // Target marker.
+      ctx.fillStyle = '#ffd23f';
+      ctx.beginPath();
+      ctx.arc(toX(s.target.x), toZ(s.target.z), 5, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = '#000';
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+    }
+    // Traffic dots.
+    ctx.fillStyle = '#f1c40f';
+    for (var t = 0; t < (s.traffic || []).length; t++) {
+      ctx.beginPath();
+      ctx.arc(toX(s.traffic[t].x), toZ(s.traffic[t].z), 2, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    // Police: flashing dots.
+    var flash = Math.floor(performance.now() / 300) % 2 === 0;
+    ctx.fillStyle = flash ? '#ff3333' : '#3388ff';
+    for (var p = 0; p < (s.police || []).length; p++) {
+      ctx.beginPath();
+      ctx.arc(toX(s.police[p].x), toZ(s.police[p].z), 3.5, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    // Player arrow, rotated to heading.
+    ctx.save();
+    ctx.translate(W / 2, H / 2);
+    ctx.rotate(-s.heading);
+    ctx.fillStyle = '#ffffff';
+    ctx.beginPath();
+    ctx.moveTo(0, -7); ctx.lineTo(5, 6); ctx.lineTo(0, 3); ctx.lineTo(-5, 6);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+    // North tick.
+    ctx.fillStyle = '#9aa5b1';
+    ctx.font = 'bold 10px Arial';
+    ctx.fillText('N', W / 2 - 3, 12);
   };
 
-  HUD.prototype.setVignette = function (amount) {
-    el('vignette').style.opacity = U.clamp(amount, 0, 0.85);
+  HUD.prototype._nearestRoad = function (v) {
+    var roads = SB.city.ROAD_COORDS;
+    var best = roads[0], bd = 1e9;
+    for (var i = 0; i < roads.length; i++) {
+      var d = Math.abs(v - roads[i]);
+      if (d < bd) { bd = d; best = roads[i]; }
+    }
+    return best;
   };
 
-  HUD.prototype.showMenu = function (isContinue) {
-    el('menu').classList.remove('hidden');
-    el('btn-continue').style.display = isContinue ? 'inline-block' : 'none';
+  HUD.prototype.toast = function (text, ms) {
+    var t = U.el('toast');
+    if (!t) return;
+    t.textContent = text;
+    t.style.opacity = '1';
+    if (this.toastTimer) clearTimeout(this.toastTimer);
+    var self = this;
+    this.toastTimer = setTimeout(function () { t.style.opacity = '0'; }, ms || 3200);
   };
 
-  HUD.prototype.hideMenu = function () {
-    el('menu').classList.add('hidden');
+  HUD.prototype.showMenu = function (name) {
+    var names = ['menu-start', 'menu-pause', 'menu-busted', 'menu-wasted'];
+    for (var i = 0; i < names.length; i++) {
+      var e = U.el(names[i]);
+      if (e) e.style.display = names[i] === name ? 'flex' : 'none';
+    }
+    var hud = U.el('hud');
+    if (hud) hud.style.display = name ? 'none' : 'block';
   };
 
-  HUD.prototype.showPause = function (show) {
-    el('pause').classList.toggle('hidden', !show);
-  };
+  HUD.prototype.hideMenus = function () { this.showMenu(null); };
 
-  HUD.prototype.showEnd = function (kind, text) {
-    var box = el(kind === 'busted' ? 'busted' : 'wasted');
-    box.querySelector('p').textContent = text;
-    box.classList.remove('hidden');
-  };
-
-  HUD.prototype.hideEnd = function () {
-    el('busted').classList.add('hidden');
-    el('wasted').classList.add('hidden');
-  };
-
-  window.SB.hud = { HUD: HUD, drawMinimap: drawMinimap };
-})();
+  SB.hud = { HUD: HUD };
+})(window);

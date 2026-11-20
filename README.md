@@ -4,25 +4,16 @@
 [![rank](https://make.fun/badge/gta6-01/Shayidinadapa/gta6-open-world/rank.svg)](https://make.fun/bounty/gta6-01/leaderboard?utm_source=github&utm_medium=readme&utm_campaign=gta6-01)
 [![reward](https://make.fun/badge/gta6-01/Shayidinadapa/gta6-open-world/reward.svg)](https://make.fun/bounty/gta6-01?utm_source=github&utm_medium=readme&utm_campaign=gta6-01)
 
-**Sunset Bay** — a complete original open-world crime game in the spirit of GTA 6, built with three.js. Explore a sun-soaked coastal city on foot and by car, steal cars, outrun the SBPD, take jobs from fixer Mara Voss, and fight the Harbormen — all in static files that run in desktop Chrome with no network.
-
-## What's inside
-
-- A procedural city: Downtown towers, Old Town, Westside, Marina and South Beach, with traffic, pedestrians, palms, lamps and a pier
-- Driving: arcade physics, carjacking, traffic AI, police pursuits with wanted level 1–5 and roadblocks at high heat
-- On-foot combat: hitscan shooting, rival gunmen, tracers and muzzle flash
-- Five story missions plus repeatable taxi fares, cash, XP and levels, localStorage saves
-- Full HUD: wanted stars, health, cash, level, objective tracker with GPS route, speedometer, and a live minimap
-- Synthesized WebAudio: engine hum, sirens, gunshots, crashes and jingles — no audio files
-- Day and neon-night modes
+**Sunset Bay** — a complete original 3D open-world crime game in the browser. Kai "Rook" Mercer just got out, and fixer Mara Voss has five jobs that pay — if the Sunset Bay PD doesn't catch him first. Explore a fictional coastal city on foot and by car, steal cars, dodge a 1–5 star wanted level with police chases and roadblocks, run five story missions plus repeatable fares, fight on foot, and watch the city shift from sunny avenues to a neon night. Built with three.js, plain static files, no network at runtime.
 
 ## Run it
 
 ```sh
 npx serve game
-# or: node serve.ts
-# then open http://localhost:8080
+# open http://localhost:3000 in desktop Chrome, or serve game/ with any static server
 ```
+
+Or open `game/index.html` through a local server (for example `python3 -m http.server` inside `game/`). Keyboard + mouse: WASD move/drive, Shift sprint, E enter/exit car, click to shoot on foot, drag to orbit the camera, N next job, P pause, M mute. Progress (money, XP, level, missions) saves to localStorage.
 
 ---
 
